@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -14,8 +15,9 @@ import (
 
 // Main routine to read lines from input stream and append code to a.Code.
 func (a *Assembler) Assemble(input io.Reader) error {
-	scanner := bufio.NewScanner(input)
-	if err := a.pass1(scanner); err != nil {
+	log.Debug("-- pass 1 --")
+	a.addr = 0
+	if err := a.pass1(input); err != nil {
 		return err
 	}
 	if log.GetLevel() >= log.DebugLevel {
@@ -23,17 +25,18 @@ func (a *Assembler) Assemble(input io.Reader) error {
 			a.addr2Label[addr] = name
 		}
 	}
+	log.Debug("-- pass 2 --")
 	return a.pass2()
 }
 
 // parse fields, get label addresses and define constants
-func (a *Assembler) pass1(scanner *bufio.Scanner) error {
-	log.Debug("-- pass 1 --")
+func (a *Assembler) pass1(input io.Reader) error {
+	scanner := bufio.NewScanner(input)
 	line := 0
-	addr := 0
+	filename := basename(input)
 	for scanner.Scan() {
 		if a.err != nil {
-			return fmt.Errorf("syntax error at line %d - %w", line, a.err)
+			return fmt.Errorf("error at line %s%d - %w", filename, line, a.err)
 		}
 		line++
 		text := strings.TrimSpace(trimComments(scanner.Text()))
@@ -41,9 +44,10 @@ func (a *Assembler) pass1(scanner *bufio.Scanner) error {
 			continue
 		}
 		fields := parse(text)
+		log.Tracef("%04X - %v", a.addr, fields)
 		// label definition?
 		if label, ok := isLabel(fields[0]); ok {
-			a.defineLabel(label, addr)
+			a.defineLabel(label, a.addr)
 			fields = fields[1:]
 		}
 		if len(fields) == 0 {
@@ -54,8 +58,11 @@ func (a *Assembler) pass1(scanner *bufio.Scanner) error {
 			a.defineConstant(fields[0], fields[2])
 			continue
 		}
-		cmd := command{op: strings.ToUpper(fields[0]), args: fields[1:]}
+		cmd := command{op: strings.ToUpper(fields[0]), args: fields[1:], line: line}
 		switch cmd.op {
+		case "INCLUDE":
+			a.parseInclude(fields[1:])
+			continue
 		case "IMPORTBIN":
 			a.parseImportbin(fields[1:])
 			continue
@@ -63,25 +70,23 @@ func (a *Assembler) pass1(scanner *bufio.Scanner) error {
 			code := a.parseDB(cmd.args)
 			cmd.size = len(code)
 		case "DW":
-			code := a.parseDW(cmd.args)
-			cmd.size = len(code)
+			cmd.size = 2 * len(cmd.args)
 		default:
 			cmd.size = 4
 		}
 		a.commands = append(a.commands, cmd)
-		addr += cmd.size
+		a.addr += cmd.size
 	}
 	// importbin adds data to end of file
 	for _, m := range a.imports {
-		a.defineLabel(m.label, addr)
-		addr += len(m.data)
+		a.defineLabel(m.label, a.addr)
+		a.addr += len(m.data)
 	}
 	return scanner.Err()
 }
 
 // assemble to byte code in a.Code
 func (a *Assembler) pass2() error {
-	log.Debug("-- pass 2 --")
 	for _, cmd := range a.commands {
 		addr := len(a.Code)
 		if name, ok := a.addr2Label[addr]; ok {
@@ -90,7 +95,7 @@ func (a *Assembler) pass2() error {
 		err := a.Instruction(cmd.op, cmd.args)
 		opcode := "..."
 		if cmd.size <= 4 {
-			opcode = fmt.Sprintf("%02X", a.Code[addr:addr+cmd.size])
+			opcode = fmt.Sprintf("%02X", a.Code[addr:min(addr+cmd.size, len(a.Code))])
 		}
 		log.Debugf("  %04X  %-8s  %s %s", addr, opcode, cmd.op, strings.Join(cmd.args, ", "))
 		if err != nil {
@@ -165,13 +170,27 @@ func (a *Assembler) parseDW(args []string) (code []byte) {
 	return code
 }
 
+func (a *Assembler) parseInclude(args []string) {
+	if len(args) != 1 {
+		a.err = fmt.Errorf("include: expecting 1 arg")
+		return
+	}
+	f, err := os.Open(a.filename(args[0]))
+	if err != nil {
+		a.err = fmt.Errorf("include: error opening %s - %w", args[0], err)
+		return
+	}
+	defer f.Close()
+	a.err = a.pass1(f)
+}
+
 // importbin FILE OFFSET LENGTH LABEL
 func (a *Assembler) parseImportbin(args []string) {
 	if len(args) != 4 {
 		a.err = fmt.Errorf("importbin: expecting 4 args")
 		return
 	}
-	file, label := args[0], args[3]
+	label := args[3]
 	if !isIdent(label) {
 		a.err = fmt.Errorf("importbin: invalid label: %q", label)
 		return
@@ -186,33 +205,40 @@ func (a *Assembler) parseImportbin(args []string) {
 		a.err = fmt.Errorf("importbin: invalid length: %w", err)
 		return
 	}
-	data, err := os.ReadFile(file)
+	data, err := os.ReadFile(a.filename(args[0]))
 	if err != nil {
-		a.err = fmt.Errorf("importbin: error reading data from %s: %w", file, err)
+		a.err = fmt.Errorf("importbin: error reading data from %s: %w", args[0], err)
 		return
 	}
-	if len(data) < offset+length {
-		a.err = fmt.Errorf("importbin: size of file %s too short", file)
+	a.imports = append(a.imports, importbin{label: label, data: data[offset:min(offset+length, len(data))]})
+}
+
+func (a *Assembler) filename(file string) string {
+	if !filepath.IsAbs(file) && a.BaseDir != "" {
+		file = filepath.Join(a.BaseDir, file)
 	}
-	a.imports = append(a.imports, importbin{label: label, data: data[offset : offset+length]})
+	return file
+}
+
+func basename(r io.Reader) string {
+	if file, ok := r.(*os.File); ok {
+		return filepath.Base(file.Name()) + ":"
+	}
+	return ""
 }
 
 func parse(line string) (fields []string) {
-	var tok string
-	tok, line = parseToken(line, 0)
-	if tok != "" {
+	for {
+		var tok string
+		tok, line = parseToken(line)
+		if tok == "" {
+			return
+		}
 		fields = append(fields, tok)
 	}
-	for tok != "" {
-		tok, line = parseToken(line, ',')
-		if tok != "" {
-			fields = append(fields, tok)
-		}
-	}
-	return
 }
 
-func parseToken(line string, seperator rune) (token, rest string) {
+func parseToken(line string) (token, rest string) {
 	inString := false
 	runes := []rune(line)
 	for i, ch := range runes {
@@ -224,14 +250,11 @@ func parseToken(line string, seperator rune) (token, rest string) {
 			token += string(ch)
 		} else {
 			switch ch {
-			case ' ', '\t':
+			case ' ', '\t', ',':
 				if token != "" {
 					rest = line[i+1:]
 					return
 				}
-			case seperator:
-				rest = line[i+1:]
-				return
 			case '"':
 				inString = true
 				token += string(ch)

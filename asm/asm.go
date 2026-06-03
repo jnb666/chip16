@@ -9,6 +9,7 @@
 //	DB vals...			- store bytes
 //	DB "string"			- store bytes from string
 //	DW vals...			- store 16 bit words
+//	INCLUDE file			- include source from file at this point
 //	IMPORTBIN file,off,len,label	- append file contents from off:off+len to end of binary
 package asm
 
@@ -24,6 +25,7 @@ import (
 )
 
 type Assembler struct {
+	BaseDir    string
 	Code       []byte
 	Constants  map[string]string
 	Labels     map[string]int
@@ -31,6 +33,7 @@ type Assembler struct {
 	commands   []command
 	imports    []importbin
 	op         string
+	addr       int
 	err        error
 }
 
@@ -64,6 +67,10 @@ func (a *Assembler) Instruction(op string, args []string) error {
 		a.Jx(op[1:], args)
 	case "CZ", "CNZ", "CN", "CNN", "CP", "CO", "CNO", "CA", "CAE", "CB", "CBE", "CG", "CGE", "CL", "CLE":
 		a.Cx(op[1:], args)
+	case "JMZ":
+		a.Cx("Z", args)
+	case "JC":
+		a.JMC(args)
 	default:
 		a.callMethod(op, args)
 	}
@@ -230,7 +237,7 @@ func (a *Assembler) Cx(code string, args []string) {
 func (a *Assembler) LDI(args []string) {
 	if a.nargs("LDI", args, 2) {
 		i := a.num(args[1])
-		if args[0] == "SP" {
+		if args[0] == "SP" || args[0] == "sp" {
 			a.emit(0x21 | imm(i))
 		} else {
 			a.emit(0x20 | rx(a.reg(args[0])) | imm(i))
@@ -563,6 +570,10 @@ func (a *Assembler) NEG(args []string) {
 func (a *Assembler) callMethod(name string, args []string) {
 	var zero reflect.Value
 	fn := reflect.ValueOf(a).MethodByName(name)
+	if fn == (reflect.Value{}) {
+		a.err = fmt.Errorf("error: opcode %s not defined", name)
+		return
+	}
 	typ := fn.Type()
 	if fn == zero || typ.Kind() != reflect.Func || typ.NumIn() != 1 || typ.In(0) != reflect.TypeFor[[]string]() {
 		a.err = fmt.Errorf("error: opcode %s not defined", name)
@@ -688,13 +699,13 @@ func atoi(s string, base int) (int, error) {
 }
 
 func getBase(s string) (string, int) {
-	if strings.HasPrefix(s, "#") {
+	if strings.HasPrefix(s, "#") || strings.HasPrefix(s, "$") {
 		return s[1:], 16
 	}
 	if strings.HasSuffix(s, "h") {
 		return s[:len(s)-1], 16
 	}
-	if strings.HasPrefix(s, "0x") {
+	if strings.HasPrefix(s, "0x") || strings.HasPrefix(s, "0X") {
 		return s[2:], 16
 	}
 	return s, 10

@@ -18,13 +18,13 @@
 
 
 ;------------------------Import all graphic data's---------------------------
-importbin naruto_lr.bin 	0 5610 		naruto_lr   
-importbin naruto_ud.bin 	0 17760 	naruto_ud
-importbin naruto_stand.bin 	0 4400 		naruto_stand
-importbin kunai_2.bin 		0 250  		kunai
-importbin fall_1.bin 		0 3726 		fall_1
-importbin fall_2.bin 		0 15048 	fall_2
-importbin ninja.bin         0 1100      ninja
+importbin bin/naruto_lr.bin 	0 5610 		naruto_lr   
+importbin bin/naruto_ud.bin 	0 17760 	naruto_ud
+importbin bin/naruto_stand.bin 	0 4400 		naruto_stand
+importbin bin/kunai_2.bin 		0 250  		kunai
+importbin bin/fall_1.bin 		0 3726 		fall_1
+importbin bin/fall_2.bin 		0 15048 	fall_2
+importbin bin/ninja.bin         0 1100      ninja
 ;-----------------------------------------------------------------------------
 
 

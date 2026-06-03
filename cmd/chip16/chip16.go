@@ -40,7 +40,7 @@ func init() {
 	flag.IntVar(&opts.debug, "debug", 0, "1=debug logging, 2=verbose debug logging")
 	flag.Usage = func() {
 		fmt.Fprintln(os.Stderr, "Usage:\n  chip16 [options] file")
-		fmt.Fprintln(os.Stderr, "\tfile suffix is .asm for assembler else .c16 rom format or raw machine code")
+		fmt.Fprintln(os.Stderr, "\tfile suffix is .asm or .s for assembler else .c16 rom format or raw machine code")
 		fmt.Fprintln(os.Stderr, "Options:")
 		flag.PrintDefaults()
 	}
@@ -102,10 +102,11 @@ func getROM(file string) (rom []byte, err error) {
 		return nil, err
 	}
 	defer r.Close()
-	if !strings.HasSuffix(file, ".asm") {
+	if !isAsm(file) {
 		return io.ReadAll(r)
 	}
 	a := asm.New()
+	a.BaseDir, _ = os.Getwd()
 	err = a.Assemble(r)
 	if err == nil {
 		log.Infof("assembled %d bytes from %s\n", len(a.Code), file)
@@ -122,6 +123,11 @@ func loadROM(v *vm.VM, data []byte) error {
 	copy(v.Mem[:], data[16:16+size])
 	v.PC = binary.LittleEndian.Uint16(data[0x0A:])
 	return nil
+}
+
+func isAsm(file string) bool {
+	file = strings.ToLower(file)
+	return strings.HasSuffix(file, ".asm") || strings.HasSuffix(file, ".s")
 }
 
 func defaultScale() int {

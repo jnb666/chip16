@@ -503,7 +503,7 @@ play:				snd0						; Stop all sounds
 					ldi r1, sound_play
 					addi r1, 2
 					stm r0, r1					; Insert it in our SNP instr.
-					ldi r0, var_note
+					ldm r0, var_note
 					call sound_play				; And play it!
 					ret
 ; Modifiable code for changing ADSR settings

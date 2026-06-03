@@ -12,14 +12,14 @@ import (
 
 type Opts struct {
 	outfile string
-	debug   bool
+	debug   int
 }
 
 var opts Opts
 
 func init() {
 	flag.StringVar(&opts.outfile, "o", "rom.bin", "output file name")
-	flag.BoolVar(&opts.debug, "debug", false, "enable debug logging")
+	flag.IntVar(&opts.debug, "debug", 0, "1=debug logging, 2=verbose debug logging")
 	flag.Usage = func() {
 		fmt.Fprintln(os.Stderr, "Usage:\n  gas16 [options] file.asm\nOptions:")
 		flag.PrintDefaults()
@@ -32,8 +32,8 @@ func main() {
 		flag.Usage()
 		os.Exit(1)
 	}
-	if opts.debug {
-		log.SetLevel(log.DebugLevel)
+	if opts.debug > 0 {
+		log.SetLevel(log.InfoLevel + log.Level(opts.debug))
 	}
 
 	var err error
@@ -46,6 +46,7 @@ func main() {
 	}
 
 	a := asm.New()
+	a.BaseDir, _ = os.Getwd()
 	err = a.Assemble(input)
 	check(err)
 
