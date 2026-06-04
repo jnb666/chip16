@@ -60,6 +60,7 @@ func New(vsync bool, scale, volume int) (*App, error) {
 		a.tickRate = vm.TickRate
 		a.idleWait = true
 	}
+	a.renderer.SetDrawColor(0, 0, 0, 0xFF)
 	a.tex, err = a.renderer.CreateTexture(sdl.PIXELFORMAT_INDEX8, sdl.TEXTUREACCESS_STREAMING, vm.ScreenWidth, vm.ScreenHeight)
 	if err != nil {
 		return nil, err
@@ -104,7 +105,6 @@ func (a *App) Present() {
 		a.Graphics.mu.Lock()
 		bg := a.RGBA(a.BG)
 		a.Graphics.mu.Unlock()
-		log.Debugf("set draw color %+v", bg)
 		a.renderer.SetDrawColor(bg.R, bg.G, bg.B, 0xFF)
 		a.changed = time.Now()
 	}
@@ -112,7 +112,6 @@ func (a *App) Present() {
 		a.Graphics.mu.Lock()
 		bg := a.RGBA(a.BG)
 		a.Graphics.mu.Unlock()
-		log.Debugf("set draw color %+v", bg)
 		a.renderer.SetDrawColor(bg.R, bg.G, bg.B, 0xFF)
 		a.changed = time.Now()
 	}
@@ -220,7 +219,7 @@ func (g *Graphics) SetBackground(ix uint8) {
 	g.mu.Lock()
 	g.GraphicsBase.SetBackground(ix)
 	g.mu.Unlock()
-	log.Debug("set background ", g.BG)
+	log.Tracef("set background %d: %v", g.BG, g.FG.Palette[g.BG])
 	g.redrawBG.Store(true)
 }
 
@@ -252,7 +251,7 @@ func updateTexture(tex *sdl.Texture, pixels []byte) error {
 }
 
 func updatePalette(tex *sdl.Texture, colors []sdl.Color) error {
-	log.Debug("load palette")
+	log.Debugf("load palette: %v", colors)
 	p, err := sdl.CreatePalette(vm.PaletteSize)
 	if err != nil {
 		return err

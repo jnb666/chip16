@@ -1,2 +1,4 @@
 .DS_Store
 asm/*.png
+rom.bin
+imgui.ini

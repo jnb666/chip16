@@ -23,8 +23,8 @@ To run the emulator: `chip16 file` where file may be either a raw binary, a .c16
 
 ### TODO
 
-- asm: add support for image conversion in importbin and include directive
-- add a disassembler and debugger
+- asm: add support for image conversion in importbin
+- add debugger
 - add a keyboard interface using memory mapped IO
 - add other os services - e.g. get time, sleep
 - high level programming environment - e.g. a BASIC or FORTH interpreter or compiler

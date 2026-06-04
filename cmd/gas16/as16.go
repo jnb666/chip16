@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"github.com/jnb666/chip16/asm"
 	log "github.com/sirupsen/logrus"
@@ -18,7 +19,7 @@ type Opts struct {
 var opts Opts
 
 func init() {
-	flag.StringVar(&opts.outfile, "o", "rom.bin", "output file name")
+	flag.StringVar(&opts.outfile, "o", "rom.bin", "output file name - adds 16 byte header if suffix is .c16")
 	flag.IntVar(&opts.debug, "debug", 0, "1=debug logging, 2=verbose debug logging")
 	flag.Usage = func() {
 		fmt.Fprintln(os.Stderr, "Usage:\n  gas16 [options] file.asm\nOptions:")
@@ -51,7 +52,13 @@ func main() {
 	check(err)
 
 	log.Infof("writing %d bytes to %s\n", len(a.Code), opts.outfile)
-	err = os.WriteFile(opts.outfile, a.Code, 0644)
+	f, err := os.Create(opts.outfile)
+	check(err)
+	defer f.Close()
+	if strings.HasSuffix(opts.outfile, ".c16") {
+		_, err = f.Write(asm.C16Header(a.Code, 0))
+	}
+	_, err = f.Write(a.Code)
 	check(err)
 }
 

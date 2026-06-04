@@ -28,8 +28,8 @@ TEST_2:
 ; A4 - MOD RX, RY
 	ldi  R0, -31313
 	ldi  R1, 13
-	mod  R0, R1 ;=> R0=9
-	cmpi R0, 9
+	mod  R0, R1 ;=> R0=4
+	cmpi R0, 4
 	jnz  WriteFailedCurrentTest
 TEST_3:
 	call IncreaseTestNumber
@@ -37,8 +37,8 @@ TEST_3:
 	ldi  R0, 0
 	ldi  R1, -31313
 	ldi  R2, -13
-	mod  R0,R1,R2 ;=> R0=9
-	cmpi R0, 9
+	mod  R1, R2, R0 ;=> R0=-9
+	cmpi R0, -9
 	jnz  WriteFailedCurrentTest
 TEST_4:
 	call IncreaseTestNumber
@@ -60,7 +60,7 @@ TEST_6:
 ; A8 - REM RX, RY, RZ
 	ldi  R1, -23456
 	ldi  R2, -57
-	rem  R0,R1,R2 ;=> R0=-29
+	rem  R1, R2, R0 ;=> R0=-29
 	cmpi R0, -29
 	jnz  WriteFailedCurrentTest
 ; Test Ex - Not/Neg

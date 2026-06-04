@@ -1,9 +1,10 @@
 package main
 
 import (
-	"encoding/binary"
+	"bytes"
 	"flag"
 	"fmt"
+	"image/png"
 	"io"
 	"os"
 	"runtime"
@@ -25,6 +26,8 @@ type Opts struct {
 	scale   int
 	debug   int
 	core    bool
+	screen  bool
+	nosum   bool
 }
 
 var opts Opts
@@ -32,7 +35,9 @@ var opts Opts
 func init() {
 	flag.BoolVar(&opts.novsync, "novsync", false, "disable renderer vertical sync")
 	flag.BoolVar(&opts.vivid, "vivid", false, "use vivid colormap")
-	flag.BoolVar(&opts.core, "core", false, "write core dump on error or halt")
+	flag.BoolVar(&opts.core, "core", false, "write core dump on error on halt")
+	flag.BoolVar(&opts.screen, "screen", false, "write screen.png image on halt")
+	flag.BoolVar(&opts.nosum, "nosum", false, "ignore invalid .c16 checksum")
 	flag.IntVar(&opts.volume, "volume", 128, "volume level in range from 0-255 or -1 to disable sound")
 	flag.IntVar(&opts.seed, "seed", 0, "random number seed - default is auto randomised")
 	flag.IntVar(&opts.speed, "speed", 1000, "cpu clock cycle time in nanoseconds")
@@ -70,8 +75,15 @@ func main() {
 		v.RNG.Seed(int64(opts.seed))
 	}
 	v.CycleTime = time.Duration(opts.speed) * time.Nanosecond
-	err = loadROM(v, rom)
-	check(err)
+	code, start, err := asm.ReadC16Header(rom)
+	if opts.nosum && err != nil {
+		log.Warn(err)
+	} else {
+		check(err)
+	}
+	copy(v.Mem[:], code)
+	v.PC = start
+
 	go run(v)
 	for app.PollEvents(v) {
 		app.Present()
@@ -84,8 +96,20 @@ func run(v *vm.VM) {
 		return
 	}
 	if opts.core {
+		log.Info("writing core dump")
 		if e := os.WriteFile("core", v.Mem[:], 0644); e != nil {
 			log.Error(e)
+		}
+	}
+	if opts.screen {
+		log.Info("writing screen to screen.png")
+		var buf bytes.Buffer
+		e := png.Encode(&buf, v.ScreenImage())
+		if e == nil {
+			e = os.WriteFile("screen.png", buf.Bytes(), 0644)
+		}
+		if e != nil {
+			log.Error(err)
 		}
 	}
 	if e, ok := err.(vm.Error); ok {
@@ -112,17 +136,6 @@ func getROM(file string) (rom []byte, err error) {
 		log.Infof("assembled %d bytes from %s\n", len(a.Code), file)
 	}
 	return a.Code, err
-}
-
-func loadROM(v *vm.VM, data []byte) error {
-	if string(data[:4]) != "CH16" {
-		copy(v.Mem[:], data)
-		return nil
-	}
-	size := binary.LittleEndian.Uint32(data[0x06:])
-	copy(v.Mem[:], data[16:16+size])
-	v.PC = binary.LittleEndian.Uint16(data[0x0A:])
-	return nil
 }
 
 func isAsm(file string) bool {

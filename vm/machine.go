@@ -194,7 +194,7 @@ type GraphicsBase struct {
 var _ Graphics = &GraphicsBase{}
 
 func (g *GraphicsBase) Init() {
-	g.BG = Black
+	g.BG = Transparent
 	g.FG = *image.NewPaletted(image.Rect(0, 0, ScreenWidth, ScreenHeight), DefaultPalette)
 }
 
@@ -241,7 +241,8 @@ func (g *GraphicsBase) Draw(x, y int16, dptr *byte) bool {
 
 func (g *GraphicsBase) LoadPalette(dptr *byte) {
 	data := unsafe.Slice(dptr, PaletteSize*3)
-	for i := range PaletteSize {
+	// color 0 is always transparent
+	for i := 1; i < PaletteSize; i++ {
 		g.FG.Palette[i] = color.RGBA{R: data[i*3], G: data[i*3+1], B: data[i*3+2], A: 255}
 	}
 }
