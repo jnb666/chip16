@@ -12,7 +12,6 @@ import (
 )
 
 var sources = []string{
-	"AdsrDemo.asm",
 	"bgTest.asm",
 	"bounce.asm",
 	"flipoffscreen.asm",

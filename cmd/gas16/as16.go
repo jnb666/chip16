@@ -57,6 +57,7 @@ func main() {
 	defer f.Close()
 	if strings.HasSuffix(opts.outfile, ".c16") {
 		_, err = f.Write(asm.C16Header(a.Code, 0))
+		check(err)
 	}
 	_, err = f.Write(a.Code)
 	check(err)
