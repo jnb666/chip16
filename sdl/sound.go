@@ -71,12 +71,17 @@ func (s *Sound) Init(volume int) {
 	s.volume = s.volumeLevel(7)
 }
 
+// Play sound with given frequency for msec milliseconds or until StopSound is called if msec is zero.
 func (s *Sound) StartSound(freq, msec int16, useEnvelope bool) {
 	log.Debugf("start sound: tone=%d dur=%d vol=%.0f env=%v", freq, msec, s.volume, useEnvelope)
 	if s.stream != nil {
 		s.stream.PauseDevice()
 		s.sampleIndex = 0
-		s.sampleTotal = int(msec) * AudioRate / 1000
+		if msec == 0 {
+			s.sampleTotal = 1e10
+		} else {
+			s.sampleTotal = int(msec) * AudioRate / 1000
+		}
 		s.periodTotal = AudioRate / int(freq+1)
 		s.useEnvelope = useEnvelope
 		if useEnvelope {

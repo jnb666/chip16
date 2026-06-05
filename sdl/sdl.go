@@ -66,6 +66,7 @@ type App struct {
 	controller [2]int16
 	changed    time.Time
 	minimized  bool
+	lastFrame  time.Time
 	fpsTicker  *time.Ticker
 	frames     int
 	secs       int
@@ -106,6 +107,7 @@ func New(opts Options) (*App, error) {
 		err = a.initButtons()
 	}
 	a.fpsTicker = time.NewTicker(time.Second)
+	a.lastFrame = time.Now()
 	return a, err
 }
 
@@ -129,6 +131,7 @@ func (a *App) initWindow(opts Options) error {
 		log.Debugf("display bounds: %+v", bounds)
 		width, height = int(bounds.W), int(bounds.H)
 		a.scale = min(roundScale(width, screenWidth), roundScale(height, vm.ScreenHeight))
+		sdl.HideCursor()
 	}
 	a.viewport = &sdl.FRect{W: vm.ScreenWidth * a.scale, H: vm.ScreenHeight * a.scale}
 	if !opts.UseTouch {
@@ -148,6 +151,7 @@ func (a *App) initWindow(opts Options) error {
 		a.tickRate = vm.TickRate
 		a.idleWait = true
 	}
+	a.win.Raise()
 	return nil
 }
 
@@ -214,8 +218,12 @@ func (a *App) Present() {
 	a.setVBlank(time.Now())
 	// calc frames per sec and update window title
 	a.updateFPS()
-	// copy from back buffer to display - waits for next frame vsync
+	// copy from back buffer to display and wait for next frame vsync
 	a.renderer.Present()
+	if d := time.Since(a.lastFrame); d < vm.TickRate {
+		sdl.DelayPrecise(uint64(vm.TickRate - d))
+	}
+	a.lastFrame = time.Now()
 	// extra delay if inactive for some time
 	sleepMode := a.minimized || time.Since(a.changed) > SleepAfter
 	if a.sleep != sleepMode {

@@ -193,7 +193,7 @@ func (v *VM) Step() bool {
 	case 0x0C: // SND3 HHLL
 		v.StartSound(1500, smm, false)
 	case 0x0D: // SNP RX, HHLL
-		v.StartSound(v.R[x], smm, true)
+		v.StartSound(v.Load(v.UR[x]), smm, true)
 	case 0x0E: // SNG AD, VTSR
 		env := Envelope{Attack: v.Op[1] >> 4, Decay: v.Op[1] & 0xf, Sustain: v.Op[2] >> 4, Release: v.Op[2] & 0xf}
 		v.SetSoundParams(v.Op[3]&0xf, v.Op[3]>>4, env)
