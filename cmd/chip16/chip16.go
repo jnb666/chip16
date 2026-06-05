@@ -30,10 +30,12 @@ type Opts struct {
 
 var opts = Opts{Options: sdl.DefaultOptions}
 
-func init() {
-	flag.BoolVar(&opts.Fullscreen, "fullscreen", false, "use fullscreen instead of windowed mode")
+func getopts() {
+	driver, err := sdl.Init()
+	check(err)
+	flag.BoolVar(&opts.Fullscreen, "fullscreen", driver == "kmsdrm", "use fullscreen instead of windowed mode")
 	flag.BoolVar(&opts.NoVSync, "novsync", false, "disable renderer vertical sync")
-	flag.BoolVar(&opts.UseTouch, "touch", false, "onscreen buttons for gamepad controls")
+	flag.BoolVar(&opts.UseTouch, "touch", driver == "kmsdrm", "onscreen buttons for gamepad controls")
 	flag.BoolVar(&opts.vivid, "vivid", false, "use vivid colormap")
 	flag.BoolVar(&opts.core, "coredump", false, "write core dump on error or halt")
 	flag.BoolVar(&opts.screen, "screendump", false, "write screen.png image on halt")
@@ -49,9 +51,6 @@ func init() {
 		fmt.Fprintln(os.Stderr, "Options:")
 		flag.PrintDefaults()
 	}
-}
-
-func main() {
 	flag.Parse()
 	if flag.NArg() == 0 {
 		flag.Usage()
@@ -60,6 +59,10 @@ func main() {
 	if opts.debug > 0 {
 		log.SetLevel(log.InfoLevel + log.Level(opts.debug))
 	}
+}
+
+func main() {
+	getopts()
 
 	rom, err := getROM(flag.Arg(0))
 	check(err)
@@ -85,9 +88,14 @@ func main() {
 	v.PC = start
 
 	go run(v)
+	frames := 0
+	startTime := time.Now()
 	for app.PollEvents(v) {
 		app.Present()
+		frames++
 	}
+	elapsed := time.Since(startTime).Seconds()
+	log.Infof("Average frame rate = %.1f frames/sec", float64(frames)/elapsed)
 }
 
 func run(v *vm.VM) {

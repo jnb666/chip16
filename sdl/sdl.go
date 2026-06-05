@@ -51,6 +51,20 @@ func defaultScale() float64 {
 	}
 }
 
+// Global SDL initialization. Returns driver name.
+func Init() (driver string, err error) {
+	err = sdl.LoadLibrary(libraryPath())
+	if err != nil {
+		return "", err
+	}
+	err = sdl.Init(sdl.INIT_VIDEO | sdl.INIT_AUDIO)
+	if err != nil {
+		return "", err
+	}
+	driver = sdl.GetCurrentVideoDriver()
+	return driver, nil
+}
+
 // App implements the vm.Machine interface.
 type App struct {
 	Graphics
@@ -74,22 +88,15 @@ type App struct {
 
 // Initialise SDL application.
 func New(opts Options) (*App, error) {
-	err := sdl.LoadLibrary(libraryPath())
-	if err != nil {
-		return nil, err
-	}
-	err = sdl.Init(sdl.INIT_VIDEO | sdl.INIT_AUDIO)
-	if err != nil {
-		return nil, err
-	}
 	a := &App{changed: time.Now()}
 	a.Graphics.Init()
 	a.Sound.Init(opts.Volume)
-	if err = a.initWindow(opts); err != nil {
+	err := a.initWindow(opts)
+	if err != nil {
 		return nil, err
 	}
 	opts.Scale = float64(a.scale)
-	log.Infof("SDL version %s - %s", sdl.GetVersion(), opts)
+	log.Infof("SDL %s %s - %s", sdl.GetVersion(), sdl.GetCurrentVideoDriver(), opts)
 	a.renderer.SetDrawColor(0, 0, 0, 0xFF)
 	a.tex, err = a.renderer.CreateTexture(sdl.PIXELFORMAT_INDEX8, sdl.TEXTUREACCESS_STREAMING, vm.ScreenWidth, vm.ScreenHeight)
 	if err != nil {
@@ -177,7 +184,6 @@ func (a *App) Destroy() {
 	a.tex.Destroy()
 	a.renderer.Destroy()
 	a.win.Destroy()
-	sdl.Quit()
 }
 
 // Render next frame to screen and wait for vsync.
