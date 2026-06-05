@@ -87,6 +87,7 @@ func New(opts Options) (*App, error) {
 	if err = a.initWindow(opts); err != nil {
 		return nil, err
 	}
+	opts.Scale = float64(a.scale)
 	log.Infof("SDL version %s - %s", sdl.GetVersion(), opts)
 	a.renderer.SetDrawColor(0, 0, 0, 0xFF)
 	a.tex, err = a.renderer.CreateTexture(sdl.PIXELFORMAT_INDEX8, sdl.TEXTUREACCESS_STREAMING, vm.ScreenWidth, vm.ScreenHeight)
@@ -129,7 +130,13 @@ func (a *App) initWindow(opts Options) error {
 		width, height = int(bounds.W), int(bounds.H)
 		a.scale = min(roundScale(width, screenWidth), roundScale(height, vm.ScreenHeight))
 	}
-	a.viewport = viewport(a.scale, screenWidth, width, height)
+	a.viewport = &sdl.FRect{W: vm.ScreenWidth * a.scale, H: vm.ScreenHeight * a.scale}
+	if !opts.UseTouch {
+		a.viewport.X = (float32(width) - float32(screenWidth)*a.scale) / 2
+	}
+	a.viewport.Y = (float32(height) - a.viewport.H) / 2
+	log.Debugf("window: %dx%d  scale: %g  viewport: %+v", width, height, a.scale, a.viewport)
+
 	a.win, a.renderer, err = sdl.CreateWindowAndRenderer("chip16", width, height, flags)
 	if err != nil {
 		return err
@@ -142,13 +149,6 @@ func (a *App) initWindow(opts Options) error {
 		a.idleWait = true
 	}
 	return nil
-}
-
-func viewport(scale float32, totalWidth, width, height int) *sdl.FRect {
-	vp := &sdl.FRect{W: vm.ScreenWidth * scale, H: vm.ScreenHeight * scale}
-	vp.X, vp.Y = (float32(width)-float32(totalWidth)*scale)/2, (float32(height)-vp.H)/2
-	log.Debugf("window: %dx%d viewport: %+v", width, height, vp)
-	return vp
 }
 
 func roundScale(dsize, fsize int) float32 {
