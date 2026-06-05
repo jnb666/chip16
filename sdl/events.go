@@ -1,11 +1,25 @@
 package sdl
 
 import (
+	"bytes"
+	_ "embed"
+	"image"
+	"image/draw"
+	"image/png"
 	"time"
 
 	"github.com/Zyko0/go-sdl3/sdl"
 	"github.com/jnb666/chip16/vm"
 )
+
+const (
+	TouchPanelWidth = 80
+	NumButtons      = 8
+	ButtonSize      = 32
+)
+
+//go:embed sprites.png
+var spriteData []byte
 
 // keys: up, down, left, right, select, start, A, B
 var Controller1Keys = []sdl.Scancode{
@@ -20,6 +34,9 @@ var Controller2Keys = []sdl.Scancode{
 	sdl.SCANCODE_I, sdl.SCANCODE_K, sdl.SCANCODE_J, sdl.SCANCODE_L,
 	sdl.SCANCODE_7, sdl.SCANCODE_8, sdl.SCANCODE_9, sdl.SCANCODE_0,
 }
+
+// optional on screen touch buttons
+var buttonPos = []image.Point{{24, 10}, {24, 82}, {2, 46}, {46, 46}, {4, 135}, {44, 135}, {4, 190}, {44, 190}}
 
 // Poll for input events - returns false if should quit.
 func (a *App) PollEvents(v *vm.VM) bool {
@@ -39,11 +56,28 @@ func (a *App) PollEvents(v *vm.VM) bool {
 	if keys[sdl.SCANCODE_ESCAPE] {
 		return false
 	}
-	left := keyMask(keys, Controller1Keys) | keyMask(keys, Controller1AltKeys)
-	right := keyMask(keys, Controller2Keys)
-	v.Store(vm.IOBase, left)
-	v.Store(vm.IOBase+2, right)
+	a.controller[0] = keyMask(keys, Controller1Keys) | keyMask(keys, Controller1AltKeys)
+	a.controller[1] = keyMask(keys, Controller2Keys)
+	if a.buttons != nil {
+		a.controller[0] |= a.buttonMask()
+	}
+	v.Store(vm.IOBase, a.controller[0])
+	v.Store(vm.IOBase+2, a.controller[1])
 	return true
+}
+
+func (a *App) buttonMask() (mask int16) {
+	flags, x, y := sdl.GetMouseState()
+	if flags&1 == 0 { // left button
+		return
+	}
+	for i := range a.buttons {
+		r := a.buttonRect(i)
+		if x >= r.X && y >= r.Y && x < r.X+r.W && y < r.Y+r.W {
+			mask |= 1 << i
+		}
+	}
+	return mask
 }
 
 func keyMask(keys []bool, mapping []sdl.Scancode) (mask int16) {
@@ -53,4 +87,46 @@ func keyMask(keys []bool, mapping []sdl.Scancode) (mask int16) {
 		}
 	}
 	return mask
+}
+
+func (a *App) initButtons() error {
+	sprites, err := png.Decode(bytes.NewReader(spriteData))
+	if err != nil {
+		return err
+	}
+	img := image.NewNRGBA(image.Rect(0, 0, ButtonSize, ButtonSize))
+	for i := range NumButtons {
+		draw.Draw(img, img.Rect, sprites, image.Pt(i*ButtonSize, 0), draw.Src)
+		tex, err := a.renderer.CreateTexture(sdl.PIXELFORMAT_RGBA8888, sdl.TEXTUREACCESS_STATIC, ButtonSize, ButtonSize)
+		if err != nil {
+			return err
+		}
+		tex.SetScaleMode(sdl.SCALEMODE_NEAREST)
+		err = tex.Update(nil, img.Pix, int32(img.Stride))
+		if err != nil {
+			return err
+		}
+		a.buttons = append(a.buttons, tex)
+	}
+	return nil
+}
+
+func (a *App) drawButtons() {
+	for i, tex := range a.buttons {
+		if a.controller[0]&(1<<i) != 0 {
+			tex.SetColorMod(0, 255, 0)
+		} else {
+			tex.SetColorMod(128, 128, 128)
+		}
+		must(a.renderer.RenderTexture(tex, nil, a.buttonRect(i)))
+	}
+}
+
+func (a *App) buttonRect(i int) *sdl.FRect {
+	return &sdl.FRect{
+		X: float32(buttonPos[i].X)*a.scale + a.viewport.W,
+		Y: float32(buttonPos[i].Y) * a.scale,
+		W: ButtonSize * a.scale,
+		H: ButtonSize * a.scale,
+	}
 }

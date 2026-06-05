@@ -85,8 +85,8 @@ func BenchmarkLife(b *testing.B) {
 	for b.Loop() {
 		v.Run()
 	}
+	b.ReportMetric(float64(b.Elapsed())/float64(v.Cycles), "ns/instruction")
 	b.ReportMetric(float64(b.N)/b.Elapsed().Seconds(), "frames/sec")
-	b.ReportMetric(float64(v.Cycles)/float64(b.N), "cycles/frame")
 }
 
 func runTest(t *testing.T, file string) (v *vm.VM, elapsed time.Duration) {

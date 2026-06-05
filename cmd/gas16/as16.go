@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/jnb666/chip16/asm"
@@ -37,6 +38,7 @@ func main() {
 		log.SetLevel(log.InfoLevel + log.Level(opts.debug))
 	}
 
+	a := asm.New()
 	var err error
 	var input io.Reader
 	if flag.Arg(0) == "-" {
@@ -44,10 +46,8 @@ func main() {
 	} else {
 		input, err = os.Open(flag.Arg(0))
 		check(err)
+		a.BaseDir = filepath.Dir(flag.Arg(0))
 	}
-
-	a := asm.New()
-	a.BaseDir, _ = os.Getwd()
 	err = a.Assemble(input)
 	check(err)
 

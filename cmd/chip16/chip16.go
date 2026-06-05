@@ -7,7 +7,7 @@ import (
 	"image/png"
 	"io"
 	"os"
-	"runtime"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -18,31 +18,31 @@ import (
 )
 
 type Opts struct {
-	novsync bool
-	vivid   bool
-	volume  int
-	seed    int
-	speed   int
-	scale   int
-	debug   int
-	core    bool
-	screen  bool
-	nosum   bool
+	sdl.Options
+	vivid  bool
+	seed   int
+	speed  int
+	debug  int
+	core   bool
+	screen bool
+	nosum  bool
 }
 
-var opts Opts
+var opts = Opts{Options: sdl.DefaultOptions}
 
 func init() {
-	flag.BoolVar(&opts.novsync, "novsync", false, "disable renderer vertical sync")
+	flag.BoolVar(&opts.Fullscreen, "fullscreen", false, "use fullscreen instead of windowed mode")
+	flag.BoolVar(&opts.NoVSync, "novsync", false, "disable renderer vertical sync")
+	flag.BoolVar(&opts.UseTouch, "touch", false, "onscreen buttons for gamepad controls")
 	flag.BoolVar(&opts.vivid, "vivid", false, "use vivid colormap")
-	flag.BoolVar(&opts.core, "core", false, "write core dump on error on halt")
-	flag.BoolVar(&opts.screen, "screen", false, "write screen.png image on halt")
-	flag.BoolVar(&opts.nosum, "nosum", false, "ignore invalid .c16 checksum")
-	flag.IntVar(&opts.volume, "volume", 128, "volume level in range from 0-255 or -1 to disable sound")
+	flag.BoolVar(&opts.core, "coredump", false, "write core dump on error or halt")
+	flag.BoolVar(&opts.screen, "screendump", false, "write screen.png image on halt")
+	flag.BoolVar(&opts.nosum, "nochecksum", false, "ignore invalid .c16 checksum")
+	flag.IntVar(&opts.Volume, "volume", 128, "volume level in range from 0-255 or -1 to disable sound")
 	flag.IntVar(&opts.seed, "seed", 0, "random number seed - default is auto randomised")
 	flag.IntVar(&opts.speed, "speed", 1000, "cpu clock cycle time in nanoseconds")
-	flag.IntVar(&opts.scale, "scale", defaultScale(), "window scaling factor")
 	flag.IntVar(&opts.debug, "debug", 0, "1=debug logging, 2=verbose debug logging")
+	flag.Float64Var(&opts.Scale, "scale", opts.Scale, "set window scaling factor")
 	flag.Usage = func() {
 		fmt.Fprintln(os.Stderr, "Usage:\n  chip16 [options] file")
 		fmt.Fprintln(os.Stderr, "\tfile suffix is .asm or .s for assembler else .c16 rom format or raw machine code")
@@ -64,7 +64,7 @@ func main() {
 	rom, err := getROM(flag.Arg(0))
 	check(err)
 
-	app, err := sdl.New(!opts.novsync, opts.scale, opts.volume)
+	app, err := sdl.New(opts.Options)
 	check(err)
 	defer app.Destroy()
 	if opts.vivid {
@@ -130,7 +130,7 @@ func getROM(file string) (rom []byte, err error) {
 		return io.ReadAll(r)
 	}
 	a := asm.New()
-	a.BaseDir, _ = os.Getwd()
+	a.BaseDir = filepath.Dir(file)
 	err = a.Assemble(r)
 	if err == nil {
 		log.Infof("assembled %d bytes from %s\n", len(a.Code), file)
@@ -141,14 +141,6 @@ func getROM(file string) (rom []byte, err error) {
 func isAsm(file string) bool {
 	file = strings.ToLower(file)
 	return strings.HasSuffix(file, ".asm") || strings.HasSuffix(file, ".s")
-}
-
-func defaultScale() int {
-	if runtime.GOOS == "darwin" {
-		return 2
-	} else {
-		return 4
-	}
 }
 
 func check(err error) {

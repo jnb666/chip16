@@ -4,7 +4,9 @@ package sdl
 import (
 	"fmt"
 	"image/color"
+	"reflect"
 	"runtime"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -19,23 +21,58 @@ const (
 	SleepAfter = 15 * time.Second
 )
 
-// App implements the vm.IMachine interface.
+var DefaultOptions = Options{Scale: defaultScale(), Volume: 128}
+
+// SDL options for constructing a new app.
+type Options struct {
+	Scale      float64
+	Volume     int
+	NoVSync    bool
+	Fullscreen bool
+	UseTouch   bool
+}
+
+func (o Options) String() string {
+	var s []string
+	v := reflect.ValueOf(o)
+	for fld, val := range v.Fields() {
+		if !val.IsZero() {
+			s = append(s, fmt.Sprintf("%s: %v", fld.Name, val))
+		}
+	}
+	return strings.Join(s, " ")
+}
+
+func defaultScale() float64 {
+	if runtime.GOOS == "darwin" {
+		return 2
+	} else {
+		return 4
+	}
+}
+
+// App implements the vm.Machine interface.
 type App struct {
 	Graphics
 	Sound
 	Timer
-	win       *sdl.Window
-	renderer  *sdl.Renderer
-	tex       *sdl.Texture
-	changed   time.Time
-	minimized bool
-	fpsTicker *time.Ticker
-	frames    int
-	secs      int
+	win        *sdl.Window
+	renderer   *sdl.Renderer
+	tex        *sdl.Texture
+	buttons    []*sdl.Texture
+	bgcol      color.RGBA
+	viewport   *sdl.FRect
+	scale      float32
+	controller [2]int16
+	changed    time.Time
+	minimized  bool
+	fpsTicker  *time.Ticker
+	frames     int
+	secs       int
 }
 
 // Initialise SDL application.
-func New(vsync bool, scale, volume int) (*App, error) {
+func New(opts Options) (*App, error) {
 	err := sdl.LoadLibrary(libraryPath())
 	if err != nil {
 		return nil, err
@@ -44,22 +81,13 @@ func New(vsync bool, scale, volume int) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
-	log.Infof("SDL version %s: scale=%d vsync=%v", sdl.GetVersion(), scale, vsync)
-
 	a := &App{changed: time.Now()}
 	a.Graphics.Init()
-	a.Sound.Init(volume)
-	a.win, a.renderer, err = sdl.CreateWindowAndRenderer("chip16", vm.ScreenWidth*scale, vm.ScreenHeight*scale, 0)
-	if err != nil {
+	a.Sound.Init(opts.Volume)
+	if err = a.initWindow(opts); err != nil {
 		return nil, err
 	}
-	if vsync {
-		if err := a.renderer.SetVSync(1); err != nil {
-			return nil, err
-		}
-		a.tickRate = vm.TickRate
-		a.idleWait = true
-	}
+	log.Infof("SDL version %s - %s", sdl.GetVersion(), opts)
 	a.renderer.SetDrawColor(0, 0, 0, 0xFF)
 	a.tex, err = a.renderer.CreateTexture(sdl.PIXELFORMAT_INDEX8, sdl.TEXTUREACCESS_STREAMING, vm.ScreenWidth, vm.ScreenHeight)
 	if err != nil {
@@ -73,8 +101,58 @@ func New(vsync bool, scale, volume int) (*App, error) {
 	if err = updateTexture(a.tex, a.FG.Pix); err != nil {
 		return nil, err
 	}
+	if opts.UseTouch {
+		err = a.initButtons()
+	}
 	a.fpsTicker = time.NewTicker(time.Second)
-	return a, nil
+	return a, err
+}
+
+func (a *App) initWindow(opts Options) error {
+	var err error
+	var flags sdl.WindowFlags
+	var width, height int
+	screenWidth := vm.ScreenWidth
+	if opts.UseTouch {
+		screenWidth += TouchPanelWidth
+	}
+	if !opts.Fullscreen {
+		a.scale = float32(opts.Scale)
+		width, height = int(float32(screenWidth)*a.scale+0.5), int(vm.ScreenHeight*a.scale+0.5)
+	} else {
+		flags |= sdl.WINDOW_FULLSCREEN
+		bounds, err := sdl.GetPrimaryDisplay().Bounds()
+		if err != nil {
+			return err
+		}
+		log.Debugf("display bounds: %+v", bounds)
+		width, height = int(bounds.W), int(bounds.H)
+		a.scale = min(roundScale(width, screenWidth), roundScale(height, vm.ScreenHeight))
+	}
+	a.viewport = viewport(a.scale, screenWidth, width, height)
+	a.win, a.renderer, err = sdl.CreateWindowAndRenderer("chip16", width, height, flags)
+	if err != nil {
+		return err
+	}
+	if !opts.NoVSync {
+		if err := a.renderer.SetVSync(1); err != nil {
+			return err
+		}
+		a.tickRate = vm.TickRate
+		a.idleWait = true
+	}
+	return nil
+}
+
+func viewport(scale float32, totalWidth, width, height int) *sdl.FRect {
+	vp := &sdl.FRect{W: vm.ScreenWidth * scale, H: vm.ScreenHeight * scale}
+	vp.X, vp.Y = (float32(width)-float32(totalWidth)*scale)/2, (float32(height)-vp.H)/2
+	log.Debugf("window: %dx%d viewport: %+v", width, height, vp)
+	return vp
+}
+
+func roundScale(dsize, fsize int) float32 {
+	return float32(2*dsize/fsize) / 2
 }
 
 func (a *App) SetPalette(cmap color.Palette) error {
@@ -89,6 +167,9 @@ func (a *App) SetPalette(cmap color.Palette) error {
 
 // Clean up resources on exit.
 func (a *App) Destroy() {
+	for _, tex := range a.buttons {
+		tex.Destroy()
+	}
 	a.tex.Destroy()
 	a.renderer.Destroy()
 	a.win.Destroy()
@@ -103,16 +184,14 @@ func (a *App) Present() {
 	if a.loadpal.Swap(false) {
 		must(a.SetPalette(a.FG.Palette))
 		a.Graphics.mu.Lock()
-		bg := a.RGBA(a.BG)
+		a.bgcol = a.RGBA(a.BG)
 		a.Graphics.mu.Unlock()
-		a.renderer.SetDrawColor(bg.R, bg.G, bg.B, 0xFF)
 		a.changed = time.Now()
 	}
 	if a.redrawBG.Swap(false) {
 		a.Graphics.mu.Lock()
-		bg := a.RGBA(a.BG)
+		a.bgcol = a.RGBA(a.BG)
 		a.Graphics.mu.Unlock()
-		a.renderer.SetDrawColor(bg.R, bg.G, bg.B, 0xFF)
 		a.changed = time.Now()
 	}
 	if a.redrawFG.Swap(false) {
@@ -123,8 +202,14 @@ func (a *App) Present() {
 	}
 	// draw to back buffer and set vblank flag
 	if !a.minimized {
+		a.renderer.SetDrawColor(0, 0, 0, 0)
 		a.renderer.Clear()
-		a.renderer.RenderTexture(a.tex, nil, nil)
+		a.renderer.SetDrawColor(a.bgcol.R, a.bgcol.G, a.bgcol.B, 255)
+		a.renderer.RenderFillRect(a.viewport)
+		a.renderer.RenderTexture(a.tex, nil, a.viewport)
+		if a.buttons != nil {
+			a.drawButtons()
+		}
 	}
 	a.setVBlank(time.Now())
 	// calc frames per sec and update window title
