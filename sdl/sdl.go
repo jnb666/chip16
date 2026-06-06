@@ -57,7 +57,7 @@ func Init() (driver string, err error) {
 	if err != nil {
 		return "", err
 	}
-	err = sdl.Init(sdl.INIT_VIDEO | sdl.INIT_AUDIO)
+	err = sdl.Init(sdl.INIT_VIDEO | sdl.INIT_AUDIO | sdl.INIT_JOYSTICK)
 	if err != nil {
 		return "", err
 	}
@@ -74,6 +74,7 @@ type App struct {
 	renderer   *sdl.Renderer
 	tex        *sdl.Texture
 	buttons    []*sdl.Texture
+	joystick   *sdl.Joystick
 	bgcol      color.RGBA
 	viewport   *sdl.FRect
 	scale      float32
@@ -358,6 +359,13 @@ func updatePalette(tex *sdl.Texture, colors []sdl.Color) error {
 	defer p.Destroy()
 	p.SetColors(colors, 0)
 	return tex.SetPalette(p)
+}
+
+func must2[T any](v T, err error) T {
+	if err != nil {
+		panic(err)
+	}
+	return v
 }
 
 func must(err error) {

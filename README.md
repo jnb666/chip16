@@ -38,13 +38,19 @@ goarch: amd64
 pkg: github.com/jnb666/chip16/asm
 cpu: AMD Ryzen 9 9900X 12-Core Processor
 BenchmarkLife-24        9358       1255118 ns/op           796.7 frames/sec          3.486 ns/instruction
+
+oos: linux
+goarch: arm64 (Raspberry Pi 4)
+pkg: github.com/jnb666/chip16/asm
+
+BenchmarkLife-4        1142       10319710 ns/op           96.90 frames/sec         28.63 ns/instruction
 ```
 
 ### TODO
+- menu screen with list of ROMs in current directory if none selected - return to this on hitting escape
 - music example with selection of tunes
 - asm: add support for image conversion in importbin
 - add debugger
-- add SDL gamepad support
 - add a keyboard interface using memory mapped IO
 - add other os services - e.g. get time, sleep
 - high level programming environment - e.g. a BASIC or FORTH interpreter or compiler

@@ -10,6 +10,7 @@ import (
 
 	"github.com/Zyko0/go-sdl3/sdl"
 	"github.com/jnb666/chip16/vm"
+	log "github.com/sirupsen/logrus"
 )
 
 const (
@@ -43,6 +44,17 @@ func (a *App) PollEvents(v *vm.VM) bool {
 	var ev sdl.Event
 	for sdl.PollEvent(&ev) {
 		switch ev.Type {
+		case sdl.EVENT_JOYSTICK_ADDED:
+			e := ev.JoyDeviceEvent()
+			a.joystick = must2(e.Which.OpenJoystick())
+			log.Infof("joystick %d added - %s", e.Which, must2(a.joystick.Name()))
+		case sdl.EVENT_JOYSTICK_REMOVED:
+			e := ev.JoyDeviceEvent()
+			if a.joystick != nil && must2(a.joystick.ID()) == e.Which {
+				log.Infof("joystick %d removed", e.Which)
+				a.joystick.Close()
+				a.joystick = nil
+			}
 		case sdl.EVENT_QUIT:
 			return false
 		case sdl.EVENT_WINDOW_MINIMIZED:
@@ -60,6 +72,33 @@ func (a *App) PollEvents(v *vm.VM) bool {
 	a.controller[1] = keyMask(keys, Controller2Keys)
 	if a.buttons != nil {
 		a.controller[0] |= a.buttonMask()
+	}
+	if a.joystick != nil {
+		// hardcoded mapping for https://thepihut.com/products/nes-style-raspberry-pi-compatible-usb-gamepad-controller
+		// axis 1 = up, down, axis 0 = left, right
+		if vaxis := must2(a.joystick.Axis(1)) / 256; vaxis < 0 {
+			a.controller[0] |= 1 << 0
+		} else if vaxis > 0 {
+			a.controller[0] |= 1 << 1
+		}
+		if haxis := must2(a.joystick.Axis(0)) / 256; haxis < 0 {
+			a.controller[0] |= 1 << 2
+		} else if haxis > 0 {
+			a.controller[0] |= 1 << 3
+		}
+		// buttons B=0,  A=1, select=8 start=9
+		if a.joystick.Button(8) {
+			a.controller[0] |= 1 << 4
+		}
+		if a.joystick.Button(9) {
+			a.controller[0] |= 1 << 5
+		}
+		if a.joystick.Button(1) {
+			a.controller[0] |= 1 << 6
+		}
+		if a.joystick.Button(0) {
+			a.controller[0] |= 1 << 7
+		}
 	}
 	v.Store(vm.IOBase, a.controller[0])
 	v.Store(vm.IOBase+2, a.controller[1])
