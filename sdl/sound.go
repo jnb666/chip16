@@ -33,7 +33,7 @@ var (
 	}
 )
 
-// Sound implements the vm.ISound interface
+// Sound implements the vm.Sound interface
 type Sound struct {
 	stream         *sdl.AudioStream
 	sampleIndex    int

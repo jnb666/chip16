@@ -15,6 +15,7 @@ import (
 type Machine interface {
 	Graphics
 	Sound
+	Input
 	Timer
 }
 
@@ -38,12 +39,33 @@ type Sound interface {
 	SetSoundParams(typ, vol uint8, env Envelope)
 }
 
+type Input interface {
+	Events() chan Event
+}
+
 const (
 	ScreenWidth  = 320
 	ScreenHeight = 240
 	PaletteSize  = 16
 	TickRate     = time.Second / 60
 	BusyWait     = 2 * time.Millisecond
+	InputQueue   = 256
+)
+
+const (
+	ButtonUp = 1 << iota
+	ButtonDown
+	ButtonLeft
+	ButtonRight
+	ButtonSelect
+	ButtonStart
+	ButtonA
+	ButtonB
+)
+
+const (
+	Controller1 Device = iota
+	Controller2
 )
 
 const (
@@ -123,8 +145,16 @@ type Envelope struct {
 	Release uint8
 }
 
+type Event struct {
+	Device Device
+	State  uint16
+}
+
+type Device uint8
+
 func NewMachine(vsync, idleWait bool) Machine {
 	m := new(machine)
+	m.InputBase.Init()
 	m.GraphicsBase.Init()
 	if vsync {
 		m.timer.setVsync(idleWait)
@@ -135,6 +165,7 @@ func NewMachine(vsync, idleWait bool) Machine {
 // Base machine implementation
 type machine struct {
 	GraphicsBase
+	InputBase
 	timer
 }
 
@@ -179,6 +210,19 @@ func (t *timer) VBlank() bool {
 	default:
 		return false
 	}
+}
+
+// Default input implementation
+type InputBase struct {
+	queue chan Event
+}
+
+func (i *InputBase) Init() {
+	i.queue = make(chan Event, InputQueue)
+}
+
+func (i *InputBase) Events() chan Event {
+	return i.queue
 }
 
 // Default standalone graphics implementation

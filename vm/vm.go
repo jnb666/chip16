@@ -80,7 +80,7 @@ type VM struct {
 	RNG       rand.Rand
 }
 
-// Initialise new VM
+// Initialise new VM. If m is nil then default to NewMachine with vsync and idlewait set.
 func New(m Machine) *VM {
 	v := new(VM)
 	if m != nil {
@@ -128,7 +128,7 @@ func (v *VM) dumpStack(n int) (stk []string) {
 	return
 }
 
-// Run until halt instruction. Captures and returns any runtime errors.
+// Run until halt instruction. Polls input queue every 1000 cycles. Captures and returns any runtime errors.
 func (v *VM) Run() (err error) {
 	defer func() {
 		if e := recover(); e != nil {
@@ -142,11 +142,23 @@ func (v *VM) Run() (err error) {
 	halt := false
 	for !halt {
 		halt = v.Step()
-		// enforce CPU clock timing
-		if v.CycleTime != 0 && v.Cycles%1000 == 0 {
-			target := start.Add(time.Duration(v.Cycles) * v.CycleTime)
-			for time.Now().Before(target) {
-				runtime.Gosched()
+		if v.Cycles%1000 == 0 {
+			// poll input queue
+		pollInput:
+			for {
+				select {
+				case ev := <-v.Events():
+					v.Store(IOBase+2*uint16(ev.Device), int16(ev.State))
+				default:
+					break pollInput
+				}
+			}
+			// enforce CPU clock timing
+			if v.CycleTime != 0 {
+				target := start.Add(time.Duration(v.Cycles) * v.CycleTime)
+				for time.Now().Before(target) {
+					runtime.Gosched()
+				}
 			}
 		}
 	}

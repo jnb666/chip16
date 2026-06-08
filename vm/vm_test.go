@@ -2,6 +2,7 @@ package vm
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -119,7 +120,7 @@ func TestRET(t *testing.T) {
 func TestRND(t *testing.T) {
 	v := New(nil)
 	v.RNG.Seed(1)
-	write(v, 0, 0x07, 0x01, 0x05, 0x00) // RND RX, 5
+	write(v, 0, 0x07, 0x01, 0x05, 0x00) // RND R1, 5
 	write(v, 4, 0x10)                   // JMP 0
 	var gen [10]int16
 	for i := range gen {
@@ -127,4 +128,21 @@ func TestRND(t *testing.T) {
 		gen[i] = v.R[1]
 	}
 	assert.Equal(t, [10]int16{5, 5, 3, 3, 5, 5, 5, 5, 1, 1}, gen)
+}
+
+func TestInput(t *testing.T) {
+	v := New(nil)
+	write(v, 0, 0x22, 0x00, 0xF0, 0xFF) // LDM R0, IOBASE
+	write(v, 4, 0x63, 0x00, 0x20, 0x00) // TST R0, ButtonStart
+	write(v, 8, 0x12, 0x00, 0x00, 0x00) // JZ  0
+	write(v, 12, 0x0F)                  // HALT
+	time.AfterFunc(20*time.Millisecond, func() {
+		v.Events() <- Event{Device: Controller1, State: ButtonStart}
+	})
+	start := time.Now()
+	err := v.Run()
+	elapsed := time.Since(start)
+	assert.GreaterOrEqual(t, elapsed, 20*time.Millisecond)
+	assert.LessOrEqual(t, elapsed, 25*time.Millisecond)
+	assert.EqualError(t, err, "system halted at 0010: 0F000000")
 }

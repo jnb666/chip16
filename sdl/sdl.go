@@ -69,29 +69,30 @@ func Init() (driver string, err error) {
 type App struct {
 	Graphics
 	Sound
+	Input
 	Timer
-	win        *sdl.Window
-	renderer   *sdl.Renderer
-	tex        *sdl.Texture
-	buttons    []*sdl.Texture
-	joystick   *sdl.Joystick
-	bgcol      color.RGBA
-	viewport   *sdl.FRect
-	scale      float32
-	controller [2]int16
-	changed    time.Time
-	minimized  bool
-	lastFrame  time.Time
-	fpsTicker  *time.Ticker
-	frames     int
-	secs       int
+	win       *sdl.Window
+	renderer  *sdl.Renderer
+	tex       *sdl.Texture
+	bgcol     color.RGBA
+	viewport  *sdl.FRect
+	scale     float32
+	changed   time.Time
+	minimized bool
+	lastFrame time.Time
+	fpsTicker *time.Ticker
+	frames    int
+	secs      int
 }
+
+var _ vm.Machine = &App{}
 
 // Initialise SDL application.
 func New(opts Options) (*App, error) {
 	a := &App{changed: time.Now()}
 	a.Graphics.Init()
 	a.Sound.Init(opts.Volume)
+	a.Input.Init()
 	err := a.initWindow(opts)
 	if err != nil {
 		return nil, err
@@ -114,8 +115,10 @@ func New(opts Options) (*App, error) {
 	if opts.UseTouch {
 		err = a.initButtons()
 	}
-	a.fpsTicker = time.NewTicker(time.Second)
-	a.lastFrame = time.Now()
+	if !opts.Fullscreen {
+		a.fpsTicker = time.NewTicker(time.Second)
+		a.lastFrame = time.Now()
+	}
 	return a, err
 }
 
@@ -224,7 +227,9 @@ func (a *App) Present() {
 	}
 	a.setVBlank(time.Now())
 	// calc frames per sec and update window title
-	a.updateFPS()
+	if a.fpsTicker != nil {
+		a.updateFPS()
+	}
 	// copy from back buffer to display and wait for next frame vsync
 	a.renderer.Present()
 	if d := time.Since(a.lastFrame); d < vm.TickRate {
@@ -256,7 +261,7 @@ func (a *App) updateFPS() {
 	a.secs++
 }
 
-// Timer implements the vm.ITimer interface
+// Timer implements the vm.Timer interface
 type Timer struct {
 	vblank   bool
 	idleWait bool
@@ -298,7 +303,7 @@ func (t *Timer) VBlank() bool {
 	}
 }
 
-// Graphics implements the vm.IGraphics interface
+// Graphics implements the vm.Graphics interface
 type Graphics struct {
 	vm.GraphicsBase
 	redrawBG atomic.Bool

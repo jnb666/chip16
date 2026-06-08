@@ -35,7 +35,7 @@ func getopts() {
 	check(err)
 	flag.BoolVar(&opts.Fullscreen, "fullscreen", driver == "kmsdrm", "use fullscreen instead of windowed mode")
 	flag.BoolVar(&opts.NoVSync, "novsync", false, "disable renderer vertical sync")
-	flag.BoolVar(&opts.UseTouch, "touch", driver == "kmsdrm", "onscreen buttons for gamepad controls")
+	flag.BoolVar(&opts.UseTouch, "touch", false, "onscreen buttons for gamepad controls")
 	flag.BoolVar(&opts.vivid, "vivid", false, "use vivid colormap")
 	flag.BoolVar(&opts.core, "coredump", false, "write core dump on error or halt")
 	flag.BoolVar(&opts.screen, "screendump", false, "write screen.png image on halt")
@@ -90,7 +90,7 @@ func main() {
 	go run(v)
 	frames := 0
 	startTime := time.Now()
-	for app.PollEvents(v) {
+	for app.PollEvents(v.Events()) {
 		app.Present()
 		frames++
 	}
